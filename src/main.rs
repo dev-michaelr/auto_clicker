@@ -4,16 +4,25 @@ const MOUSE: &str = "/dev/input/by-id/usb-Razer_Razer_DeathAdder_V2-event-mouse"
 const KEYBOARD: &str = "/dev/input/by-id/usb-Corsair_CORSAIR_K70_RGB_PRO_Mechanical_Gaming_Keyboard_5A26F8981EBE3651A45E0500D0491782-event-kbd";
 use gtk::prelude::*;
 use relm4::*;
+use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
+
+enum AppDuration {
+    Milliseconds = 0,
+    Seconds = 1,
+    Minutes = 2,
+    Hours = 3,
+}
 
 struct AppModel {
     durations: [Duration; 4],
     duration: Arc<AtomicU64>,
     capturing: bool,
     toggle: Arc<AtomicBool>,
+    is_clicking: Arc<AtomicBool>,
     captured_input: Arc<AtomicU16>,
 }
 
@@ -97,7 +106,10 @@ impl SimpleComponent for AppModel {
     view! {
         gtk::Window {
             set_default_size: (100,100),
-            set_sensitive: !model.capturing,
+
+            #[watch]
+            set_can_target: !( model.capturing || model.is_clicking.load(Ordering::Relaxed) ),
+
             gtk::Box {
                 set_orientation : gtk::Orientation::Vertical,
                 set_margin_all:6,
@@ -106,7 +118,8 @@ impl SimpleComponent for AppModel {
                     set_orientation : gtk::Orientation::Vertical,
                     set_spacing:12,
                     gtk::Label {
-                        set_markup: "<b>Click Interval:</b>",
+                        #[watch]
+                        set_markup: &format!("<b>Click Interval: {:?}</b>",model.durations.iter().sum::<Duration>()),
                         set_halign: gtk::Align::Start,
                     },
                     gtk::Box {
@@ -118,9 +131,9 @@ impl SimpleComponent for AppModel {
                                 set_label: "hours"
                             },
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
-                                set_value: 0.0,
+                                set_value: model.durations[AppDuration::Hours as usize].as_secs_f64() * 60.0 * 60.0,
                                 connect_value_changed[sender] => move |spin| {
-                                    sender.input(AppMessages::DurationChanged(0,Duration::from_hours(spin.value() as u64 )));
+                                    sender.input(AppMessages::DurationChanged(AppDuration::Hours as usize,Duration::from_hours(spin.value() as u64 )));
                                 },
                             }
                         },
@@ -131,9 +144,9 @@ impl SimpleComponent for AppModel {
                                 set_label: "mins"
                             },
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
-                                set_value: 0.0,
+                                set_value: model.durations[AppDuration::Minutes as usize].as_secs_f64() * 60.0,
                                 connect_value_changed[sender] => move |spin| {
-                                    sender.input(AppMessages::DurationChanged(1,Duration::from_mins(spin.value() as u64 )));
+                                    sender.input(AppMessages::DurationChanged(AppDuration::Minutes as usize,Duration::from_mins(spin.value() as u64 )));
                                 },
                             }
                         },
@@ -144,9 +157,9 @@ impl SimpleComponent for AppModel {
                                 set_label: "secs"
                             },
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
-                                set_value: 0.0,
+                                set_value: model.durations[AppDuration::Seconds as usize].as_secs_f64(),
                                 connect_value_changed[sender] => move |spin| {
-                                    sender.input(AppMessages::DurationChanged(2,Duration::from_secs(spin.value() as u64 )));
+                                    sender.input(AppMessages::DurationChanged(AppDuration::Seconds as usize,Duration::from_secs(spin.value() as u64 )));
                                 },
                             }
                         },
@@ -157,13 +170,13 @@ impl SimpleComponent for AppModel {
                                 set_label: "millisecs"
                             },
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
-                                set_value: 10.0,
+                                set_value: model.durations[AppDuration::Milliseconds as usize].as_millis() as f64,
                                 connect_value_changed[sender] => move |spin| {
-                                    sender.input(AppMessages::DurationChanged(3,Duration::from_millis(spin.value() as u64 )));
+                                    sender.input(AppMessages::DurationChanged(AppDuration::Milliseconds as usize,Duration::from_millis(spin.value() as u64 )));
                                 },
                             }
                         },
-                    }
+                    },
                 },
 
                 gtk::Box {
@@ -224,16 +237,15 @@ impl SimpleComponent for AppModel {
         let mouse = Device::open(MOUSE).unwrap();
         let keyboard = Device::open(KEYBOARD).unwrap();
         let mut virtual_mouse = create_virtual_mouse();
-
         let captured_input = Arc::new(AtomicU16::new(KeyCode::BTN_EXTRA.code()));
         let toggle = Arc::new(AtomicBool::new(false));
+        let mut durations = [Duration::default(); 4];
 
-        let durations = [
-            Duration::from_millis(0),
-            Duration::from_millis(0),
-            Duration::from_millis(0),
-            Duration::from_millis(10),
-        ];
+        // assign some defaults
+        durations[AppDuration::Milliseconds as usize] = Duration::from_millis(1);
+        durations[AppDuration::Seconds as usize] = Duration::from_millis(0);
+        durations[AppDuration::Minutes as usize] = Duration::from_millis(0);
+        durations[AppDuration::Hours as usize] = Duration::from_millis(0);
 
         let sum: Duration = durations.iter().sum();
 
@@ -281,11 +293,12 @@ impl SimpleComponent for AppModel {
         });
 
         let model = Self {
-            duration: duration,
-            durations: durations,
+            duration,
+            durations,
             capturing: false,
-            captured_input: captured_input,
-            toggle: toggle,
+            captured_input,
+            is_clicking,
+            toggle,
         };
 
         let widgets = view_output!();
