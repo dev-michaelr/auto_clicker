@@ -6,8 +6,9 @@ use gtk::prelude::*;
 use humantime::format_duration;
 use relm4::*;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
-use std::thread;
+use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64};
+use std::thread::{sleep, spawn};
 use std::time::Duration;
 
 enum AppDuration {
@@ -46,16 +47,13 @@ impl AppModel {
     fn key_label(&self) -> String {
         match self.capturing {
             true => "Press any key...".to_string(),
-            false => format!(
-                "{:?}",
-                KeyCode::new(self.captured_input.load(Ordering::Acquire))
-            ),
+            false => format!("{:?}", KeyCode::new(self.captured_input.load(Acquire))),
         }
     }
 }
 
 fn device_input_handler(mut cx: DeviceContext) {
-    thread::spawn(move || {
+    spawn(move || {
         loop {
             let device_events = cx.device.fetch_events().unwrap();
             for event in device_events {
@@ -64,31 +62,31 @@ fn device_input_handler(mut cx: DeviceContext) {
                     EventSummary::Key(_, key, 1) => {
                         cx.sender.input(AppMessages::InputCaptured(key));
 
-                        if key.code() != cx.captured_input.load(Ordering::Acquire) {
+                        if key.code() != cx.captured_input.load(Acquire) {
                             continue;
                         }
 
-                        if cx.toggle.load(Ordering::Acquire) == true {
+                        if cx.toggle.load(Acquire) == true {
                             // toggle is enabled so we flip
-                            cx.is_clicking.fetch_not(Ordering::AcqRel);
+                            cx.is_clicking.fetch_not(AcqRel);
                             continue;
                         }
 
-                        cx.is_clicking.store(true, Ordering::Release);
+                        cx.is_clicking.store(true, Release);
                     }
 
                     // key up
                     EventSummary::Key(_, key, 0) => {
-                        if key.code() != cx.captured_input.load(Ordering::Acquire) {
+                        if key.code() != cx.captured_input.load(Acquire) {
                             continue;
                         }
 
-                        if cx.toggle.load(Ordering::Acquire) == true {
+                        if cx.toggle.load(Acquire) == true {
                             // toggle is enabled so we dont turn off
                             continue;
                         }
 
-                        cx.is_clicking.store(false, Ordering::Release);
+                        cx.is_clicking.store(false, Release);
                     }
                     _ => (),
                 };
@@ -108,7 +106,7 @@ impl SimpleComponent for AppModel {
             set_default_size: (100,100),
 
             #[watch]
-            set_can_target: !( model.capturing || model.is_clicking.load(Ordering::Relaxed) ),
+            set_can_target: !( model.capturing || model.is_clicking.load(Acquire) ),
 
             gtk::Box {
                 set_orientation : gtk::Orientation::Vertical,
@@ -257,7 +255,7 @@ impl SimpleComponent for AppModel {
         let mut durations = [Duration::default(); 4];
 
         // assign some defaults
-        durations[AppDuration::Milliseconds as usize] = Duration::from_millis(1);
+        durations[AppDuration::Milliseconds as usize] = Duration::from_millis(500);
         durations[AppDuration::Seconds as usize] = Duration::from_millis(0);
         durations[AppDuration::Minutes as usize] = Duration::from_millis(0);
         durations[AppDuration::Hours as usize] = Duration::from_millis(0);
@@ -293,17 +291,14 @@ impl SimpleComponent for AppModel {
         let min_duration = Duration::from_nanos(500);
 
         // clicking thread
-        thread::spawn(move || {
+        spawn(move || {
             loop {
-                if t_is_clicking.load(Ordering::Acquire) {
+                if t_is_clicking.load(Acquire) {
                     send_left_click(&mut virtual_mouse);
                 }
-
-                let milliseconds = t_duration.load(Ordering::Acquire);
-
-                let duration: Duration = Duration::from_millis(milliseconds);
-
-                thread::sleep(duration.max(min_duration));
+                let milliseconds = t_duration.load(Acquire);
+                let duration: Duration = Duration::from_millis(milliseconds).max(min_duration);
+                sleep(duration);
             }
         });
 
@@ -331,18 +326,17 @@ impl SimpleComponent for AppModel {
                 if self.capturing {
                     self.capturing = false;
                     println!("Captured {:?}", input);
-                    self.captured_input.store(input.code(), Ordering::Release);
+                    self.captured_input.store(input.code(), Release);
                 }
             }
             AppMessages::Toggle(value) => {
-                self.toggle.store(value, Ordering::Release);
+                self.toggle.store(value, Release);
             }
 
             AppMessages::DurationChanged(index, duration) => {
                 self.durations[index] = duration;
                 let duration: Duration = self.durations.iter().sum();
-                self.duration
-                    .store(duration.as_millis() as u64, Ordering::Release);
+                self.duration.store(duration.as_millis() as u64, Release);
 
                 println!("Set duration to {:?}", duration);
             }
