@@ -5,5 +5,6 @@ edition = "2024"
 
 [dependencies]
 evdev = "0.13.2"
+humantime = "2.3.0"
 relm4 = "0.11.0"
 relm4-components = "0.11.0"

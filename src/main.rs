@@ -3,8 +3,8 @@ use evdev::*;
 const MOUSE: &str = "/dev/input/by-id/usb-Razer_Razer_DeathAdder_V2-event-mouse";
 const KEYBOARD: &str = "/dev/input/by-id/usb-Corsair_CORSAIR_K70_RGB_PRO_Mechanical_Gaming_Keyboard_5A26F8981EBE3651A45E0500D0491782-event-kbd";
 use gtk::prelude::*;
+use humantime::format_duration;
 use relm4::*;
-use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::thread;
@@ -119,7 +119,7 @@ impl SimpleComponent for AppModel {
                     set_spacing:12,
                     gtk::Label {
                         #[watch]
-                        set_markup: &format!("<b>Click Interval: {:?}</b>",model.durations.iter().sum::<Duration>()),
+                        set_markup: &format!("<b>Click Interval: {}</b>",  format_duration(model.durations.iter().sum::<Duration>()) ),
                         set_halign: gtk::Align::Start,
                     },
                     gtk::Box {
@@ -188,21 +188,35 @@ impl SimpleComponent for AppModel {
                         set_halign: gtk::Align::Start,
                     },
 
+
                     gtk::Box {
+
                         set_spacing:6,
-
-                        set_tooltip: "Makes the hotkey act like a switch",
-
                         gtk::Label {
-                            set_label: "Should toggle:",
+                            set_label: "Mode:",
                             set_halign: gtk::Align::Start,
                         },
+                        gtk::Box {
+                            add_css_class: "linked",
+                            #[name = "toggle_btn"]
+                            gtk::ToggleButton {
+                                set_label: "Hold",
+                                set_active: true,
+                                set_tooltip: "Hold hotkey to keep clicking",
+                                connect_toggled[sender] =>  move |_| {
+                                    sender.input(AppMessages::Toggle(false));
+                                }
+                            },
+                            gtk::ToggleButton {
+                                set_label: "Toggle",
+                                set_group: Some(&toggle_btn),
+                                set_tooltip: "Toggle on/off clicking with hotkey",
+                                connect_toggled[sender] =>  move |_| {
+                                    sender.input(AppMessages::Toggle(true));
+                                }
+                            },
+                        }
 
-                        gtk::Switch {
-                            connect_active_notify[sender] => move |switch| {
-                                sender.input(AppMessages::Toggle(switch.is_active()));
-                            }
-                        },
                     },
 
                     // Hotkey Selector
@@ -210,7 +224,7 @@ impl SimpleComponent for AppModel {
                     gtk::Box {
                         set_spacing:6,
                         gtk::Label {
-                            set_label: "Hotkey:",
+                            set_label: "Activation Key:",
                             set_halign: gtk::Align::Start,
                         },
 
@@ -222,7 +236,8 @@ impl SimpleComponent for AppModel {
                             },
                         },
                     }
-                }
+                },
+
 
             },
 
