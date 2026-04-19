@@ -5,12 +5,13 @@ const KEYBOARD: &str = "/dev/input/by-id/usb-Corsair_CORSAIR_K70_RGB_PRO_Mechani
 use gtk::prelude::*;
 use humantime::format_duration;
 use relm4::*;
-use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::Ordering::{Relaxed, SeqCst};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64};
 use std::sync::{Arc, mpsc};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 
+#[derive(Debug)]
 enum AppDuration {
     Milliseconds = 0,
     Seconds = 1,
@@ -20,77 +21,89 @@ enum AppDuration {
 
 struct AppModel {
     durations: [Duration; 4],
-    duration: Arc<AtomicU64>,
     capturing: bool,
-    toggle: Arc<AtomicBool>,
-    is_clicking: Arc<AtomicBool>,
-    captured_input: Arc<AtomicU16>,
+    is_clicking: bool,
     click_sender: mpsc::Sender<()>,
+    cx: AppContext,
+}
+
+#[derive(Clone)]
+struct AppContext {
+    toggle: Arc<AtomicBool>,
+    keep_clicking: Arc<AtomicBool>,
+    captured_input: Arc<AtomicU16>,
+    capturing: Arc<AtomicBool>,
+    duration: Arc<AtomicU64>,
+    sender: ComponentSender<AppModel>,
 }
 
 struct DeviceContext {
     device: Device,
-    toggle: Arc<AtomicBool>,
-    is_clicking: Arc<AtomicBool>,
-    sender: ComponentSender<AppModel>,
-    captured_input: Arc<AtomicU16>,
+    cx: AppContext,
 }
 
 #[derive(Debug)]
 enum AppMessages {
-    StartCapturing,
-    InputCaptured(KeyCode),
+    CaptureBegin,
+    ClickingBegin,
+    CaptureEnd(KeyCode),
+    ClickingEnd,
     Toggle(bool),
-    StartClicking,
-    DurationChanged(usize, Duration),
+    DurationChanged(AppDuration, Duration),
 }
 
 impl AppModel {
     fn key_label(&self) -> String {
         match self.capturing {
-            true => "Press any key...".to_string(),
-            false => format!("{:?}", KeyCode::new(self.captured_input.load(SeqCst))),
+            true => String::from("Press any key..."),
+            false => format!("{:?}", KeyCode::new(self.cx.captured_input.load(SeqCst))),
         }
     }
 }
 
-fn device_input_handler(mut cx: DeviceContext) {
+fn device_input_handler(mut device_context: DeviceContext) {
+    let cx = device_context.cx;
+
     spawn(move || {
         loop {
-            let device_events = cx.device.fetch_events().unwrap();
+            let device_events = device_context.device.fetch_events().unwrap();
             for event in device_events {
                 match event.destructure() {
-                    // key down
                     EventSummary::Key(_, key, 1) => {
-                        cx.sender.input(AppMessages::InputCaptured(key));
-
+                        // key pressed down
+                        if cx
+                            .capturing
+                            .compare_exchange(true, false, SeqCst, Relaxed)
+                            .is_ok()
+                        {
+                            // capturing is set to false now!
+                            cx.captured_input.store(key.code(), SeqCst);
+                            // capture input next press
+                            cx.sender.input(AppMessages::CaptureEnd(key));
+                            continue;
+                        }
                         if key.code() != cx.captured_input.load(SeqCst) {
                             continue;
                         }
-
                         if cx.toggle.load(SeqCst) == true {
                             // toggle is enabled so we flip
-                            cx.is_clicking.fetch_not(SeqCst);
+                            cx.keep_clicking.fetch_not(SeqCst);
                         } else {
-                            cx.is_clicking.store(true, SeqCst);
+                            cx.keep_clicking.store(true, SeqCst);
                         }
-
-                        cx.sender.input(AppMessages::StartClicking);
+                        cx.sender.input(AppMessages::ClickingBegin);
                     }
-
-                    // key up
                     EventSummary::Key(_, key, 0) => {
+                        // key up
                         if key.code() != cx.captured_input.load(SeqCst) {
                             continue;
                         }
-
                         if cx.toggle.load(SeqCst) == true {
                             // toggle is enabled so we dont turn off
                             continue;
                         }
-
-                        cx.is_clicking.store(false, SeqCst);
-                        cx.sender.input(AppMessages::StartClicking);
+                        cx.keep_clicking.store(false, SeqCst);
+                        cx.sender.input(AppMessages::ClickingBegin);
                     }
                     _ => (),
                 };
@@ -110,7 +123,7 @@ impl SimpleComponent for AppModel {
             set_default_size: (100,100),
 
             #[watch]
-            set_can_target: !( model.capturing || model.is_clicking.load(SeqCst) ),
+            set_can_target: !( model.capturing || model.is_clicking ),
 
             gtk::Box {
                 set_orientation : gtk::Orientation::Vertical,
@@ -135,7 +148,7 @@ impl SimpleComponent for AppModel {
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
                                 set_value: model.durations[AppDuration::Hours as usize].as_secs_f64() * 60.0 * 60.0,
                                 connect_value_changed[sender] => move |spin| {
-                                    sender.input(AppMessages::DurationChanged(AppDuration::Hours as usize,Duration::from_hours(spin.value() as u64 )));
+                                    sender.input(AppMessages::DurationChanged(AppDuration::Hours,Duration::from_hours(spin.value() as u64 )));
                                 },
                             }
                         },
@@ -148,7 +161,7 @@ impl SimpleComponent for AppModel {
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
                                 set_value: model.durations[AppDuration::Minutes as usize].as_secs_f64() * 60.0,
                                 connect_value_changed[sender] => move |spin| {
-                                    sender.input(AppMessages::DurationChanged(AppDuration::Minutes as usize,Duration::from_mins(spin.value() as u64 )));
+                                    sender.input(AppMessages::DurationChanged(AppDuration::Minutes,Duration::from_mins(spin.value() as u64 )));
                                 },
                             }
                         },
@@ -161,7 +174,7 @@ impl SimpleComponent for AppModel {
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
                                 set_value: model.durations[AppDuration::Seconds as usize].as_secs_f64(),
                                 connect_value_changed[sender] => move |spin| {
-                                    sender.input(AppMessages::DurationChanged(AppDuration::Seconds as usize,Duration::from_secs(spin.value() as u64 )));
+                                    sender.input(AppMessages::DurationChanged(AppDuration::Seconds,Duration::from_secs(spin.value() as u64 )));
                                 },
                             }
                         },
@@ -174,7 +187,7 @@ impl SimpleComponent for AppModel {
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
                                 set_value: model.durations[AppDuration::Milliseconds as usize].as_millis() as f64,
                                 connect_value_changed[sender] => move |spin| {
-                                    sender.input(AppMessages::DurationChanged(AppDuration::Milliseconds as usize,Duration::from_millis(spin.value() as u64 )));
+                                    sender.input(AppMessages::DurationChanged(AppDuration::Milliseconds,Duration::from_millis(spin.value() as u64 )));
                                 },
                             }
                         },
@@ -234,15 +247,13 @@ impl SimpleComponent for AppModel {
                             #[watch]
                             set_label: &model.key_label(),
                             connect_clicked[sender] => move |_| {
-                                sender.input(AppMessages::StartCapturing);
+                                sender.input(AppMessages::CaptureBegin);
                             },
                         },
                     }
                 },
 
-
             },
-
         }
     }
 
@@ -254,8 +265,7 @@ impl SimpleComponent for AppModel {
         let mouse = Device::open(MOUSE).unwrap();
         let keyboard = Device::open(KEYBOARD).unwrap();
         let mut virtual_mouse = create_virtual_mouse();
-        let captured_input = Arc::new(AtomicU16::new(KeyCode::BTN_EXTRA.code()));
-        let toggle = Arc::new(AtomicBool::new(false));
+        let (click_sender, click_reciever) = mpsc::channel::<()>();
         let mut durations = [Duration::default(); 4];
 
         // assign some defaults
@@ -264,26 +274,25 @@ impl SimpleComponent for AppModel {
         durations[AppDuration::Minutes as usize] = Duration::from_millis(0);
         durations[AppDuration::Hours as usize] = Duration::from_millis(0);
 
-        let sum: Duration = durations.iter().sum();
-
-        let duration = Arc::new(AtomicU64::new(sum.as_millis() as u64));
-        let is_clicking = Arc::new(AtomicBool::new(false));
-        let (click_sender, click_reciever) = mpsc::channel::<()>();
+        let cx = AppContext {
+            toggle: Arc::new(AtomicBool::new(false)),
+            keep_clicking: Arc::new(AtomicBool::new(false)),
+            captured_input: Arc::new(AtomicU16::new(KeyCode::BTN_EXTRA.code())),
+            capturing: Arc::new(AtomicBool::new(false)),
+            sender: sender.clone(),
+            duration: Arc::new(AtomicU64::new(
+                durations.iter().sum::<Duration>().as_millis() as u64,
+            )),
+        };
 
         let keyboard_context = DeviceContext {
             device: keyboard,
-            toggle: toggle.clone(),
-            is_clicking: is_clicking.clone(),
-            sender: sender.clone(),
-            captured_input: captured_input.clone(),
+            cx: cx.clone(),
         };
 
         let mouse_context = DeviceContext {
             device: mouse,
-            toggle: toggle.clone(),
-            is_clicking: is_clicking.clone(),
-            sender: sender.clone(),
-            captured_input: captured_input.clone(),
+            cx: cx.clone(),
         };
 
         // keyboard thread
@@ -291,32 +300,38 @@ impl SimpleComponent for AppModel {
         // mouse thread
         device_input_handler(mouse_context);
 
-        let t_is_clicking = is_clicking.clone();
-        let t_duration = duration.clone();
+        let t_keep_clicking = cx.keep_clicking.clone();
+        let t_duration = cx.duration.clone();
         let min_duration = Duration::from_nanos(500);
+        let t_sender = sender.clone();
 
         // clicking thread
         spawn(move || {
             loop {
-                click_reciever.recv().unwrap(); // blocks here, zero CPU usage while waiting
-
-                while t_is_clicking.load(SeqCst) {
-                    send_left_click(&mut virtual_mouse);
-                    let milliseconds = t_duration.load(SeqCst);
-                    let duration: Duration = Duration::from_millis(milliseconds).max(min_duration);
-                    sleep(duration);
+                match click_reciever.recv() {
+                    Ok(_) => {
+                        while t_keep_clicking.load(SeqCst) {
+                            send_left_click(&mut virtual_mouse);
+                            let milliseconds = t_duration.load(SeqCst);
+                            let duration: Duration =
+                                Duration::from_millis(milliseconds).max(min_duration);
+                            sleep(duration);
+                        }
+                        t_sender.input(AppMessages::ClickingEnd);
+                    }
+                    Err(_) => {
+                        return;
+                    }
                 }
             }
         });
 
         let model = Self {
-            duration,
             durations,
-            capturing: false,
-            captured_input,
-            is_clicking,
+            cx,
             click_sender,
-            toggle,
+            capturing: false,
+            is_clicking: false,
         };
 
         let widgets = view_output!();
@@ -326,34 +341,37 @@ impl SimpleComponent for AppModel {
 
     fn update(&mut self, message: Self::Input, _: relm4::ComponentSender<Self>) {
         match message {
-            AppMessages::StartCapturing => {
-                println!("Begin Capture");
+            AppMessages::CaptureBegin => {
+                println!("Capturing");
                 self.capturing = true;
-            }
-            AppMessages::StartClicking => {
-                if self.is_clicking.load(SeqCst) {
-                    println!("Start Clicking!");
-                    self.click_sender.send(()).unwrap();
-                } else {
-                    println!("Stopped Clicking!");
-                }
-            }
-            AppMessages::InputCaptured(input) => {
-                if self.capturing {
-                    self.capturing = false;
-                    println!("Captured {:?}", input);
-                    self.captured_input.store(input.code(), SeqCst);
-                }
+                self.cx.capturing.store(true, SeqCst);
             }
             AppMessages::Toggle(value) => {
-                self.toggle.store(value, SeqCst);
+                self.cx.toggle.store(value, SeqCst);
             }
 
-            AppMessages::DurationChanged(index, duration) => {
-                self.durations[index] = duration;
-                let duration: Duration = self.durations.iter().sum();
-                self.duration.store(duration.as_millis() as u64, SeqCst);
+            AppMessages::CaptureEnd(key) => {
+                println!("Captured {:?}", key);
+                self.capturing = false;
+            }
 
+            AppMessages::ClickingBegin => {
+                if self.cx.keep_clicking.load(SeqCst) {
+                    println!("Begin Clicking");
+                    self.is_clicking = true;
+                    self.click_sender.send(()).unwrap();
+                }
+            }
+
+            AppMessages::ClickingEnd => {
+                println!("Clicking stopped");
+                self.is_clicking = false;
+            }
+
+            AppMessages::DurationChanged(app_duration, duration) => {
+                self.durations[app_duration as usize] = duration;
+                let duration: Duration = self.durations.iter().sum();
+                self.cx.duration.store(duration.as_millis() as u64, SeqCst);
                 println!("Set duration to {:?}", duration);
             }
         }
@@ -387,7 +405,6 @@ fn send_left_click(device: &mut VirtualDevice) {
 }
 
 fn main() {
-    println!("Hello, world!");
     let app = RelmApp::new("relm4.test.simple");
     app.run::<AppModel>(());
 }
