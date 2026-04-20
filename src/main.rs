@@ -18,23 +18,27 @@ const KEYBOARD: &str = "/dev/input/by-id/usb-Corsair_CORSAIR_K70_RGB_PRO_Mechani
 const MIN_DURATION: Duration = Duration::from_millis(1);
 
 #[derive(Serialize, Deserialize)]
-#[serde(default)]
 struct Config {
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "humantime_serde", default = "default_interval")]
     interval: Duration,
-    #[serde(with = "keycode_serde")]
+
+    #[serde(with = "keycode_serde", default = "default_hotkey")]
     hotkey: KeyCode,
+
+    #[serde(default = "default_toggle")]
     toggle: bool,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            interval: Duration::from_millis(15),
-            hotkey: KeyCode::BTN_EXTRA,
-            toggle: false,
-        }
-    }
+fn default_hotkey() -> KeyCode {
+    KeyCode::BTN_EXTRA // or whatever your default is
+}
+
+fn default_interval() -> Duration {
+    Duration::from_millis(15)
+}
+
+fn default_toggle() -> bool {
+    false
 }
 
 fn config_path() -> std::path::PathBuf {
@@ -66,6 +70,7 @@ struct AppModel {
     hotkey: KeyCode,
     click_sender: mpsc::Sender<()>,
     cx: AppContext,
+    dirty: bool,
 }
 
 #[derive(Clone)]
@@ -381,6 +386,7 @@ impl SimpleComponent for AppModel {
             toggle: config.toggle,
             hotkey: config.hotkey,
             duration,
+            dirty: false,
         };
 
         let widgets = view_output!();
@@ -399,12 +405,14 @@ impl SimpleComponent for AppModel {
                 self.cx.toggle.store(value, SeqCst);
                 self.toggle = value;
                 println!("Toggle set to {}", value);
+                self.dirty = true
             }
 
             AppMessages::CaptureEnd(key) => {
                 println!("Captured {:?}", key);
                 self.capturing = false;
-                self.hotkey = key
+                self.hotkey = key;
+                self.dirty = true
             }
 
             AppMessages::ClickingBegin => {
@@ -426,11 +434,16 @@ impl SimpleComponent for AppModel {
                 self.cx.duration.store(duration.as_millis() as u64, SeqCst);
                 self.duration = duration;
                 println!("Set duration to {}", format_duration(duration));
+                self.dirty = true
             }
         }
     }
 
     fn shutdown(&mut self, _: &mut Self::Widgets, _: Sender<Self::Output>) {
+        if !self.dirty {
+            return;
+        }
+
         let config = Config {
             interval: self.duration,
             hotkey: KeyCode::new(self.cx.captured_input.load(SeqCst)),
