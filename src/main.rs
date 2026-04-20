@@ -398,6 +398,7 @@ impl SimpleComponent for AppModel {
             AppMessages::Toggle(value) => {
                 self.cx.toggle.store(value, SeqCst);
                 self.toggle = value;
+                println!("Toggle set to {}", value);
             }
 
             AppMessages::CaptureEnd(key) => {
@@ -469,6 +470,6 @@ fn main() {
     let path = config_path();
     let contents = std::fs::read_to_string(path).unwrap_or_default();
     let config: Config = toml::from_str(&contents).unwrap();
-    let app = RelmApp::new("relm4.test.simple");
+    let app = RelmApp::new("io.github.rusty483.autoclicker");
     app.run::<AppModel>(config);
 }
