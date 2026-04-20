@@ -106,6 +106,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "nix",
+ "serde",
 ]
 
 [[package]]

@@ -4,7 +4,6 @@ use evdev::*;
 use gtk::prelude::*;
 use humantime::format_duration;
 use humantime_serde;
-mod keycode_serde;
 use relm4::*;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::Ordering::{Relaxed, SeqCst};
@@ -22,7 +21,7 @@ struct Config {
     #[serde(with = "humantime_serde", default = "default_interval")]
     interval: Duration,
 
-    #[serde(with = "keycode_serde", default = "default_hotkey")]
+    #[serde(default = "default_hotkey")]
     hotkey: KeyCode,
 
     #[serde(default = "default_toggle")]
