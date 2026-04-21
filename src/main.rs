@@ -6,15 +6,20 @@ use humantime::format_duration;
 use humantime_serde;
 use relm4::*;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::atomic::Ordering::{Relaxed, SeqCst};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64};
 use std::sync::{Arc, mpsc};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 
-const MOUSE: &str = "/dev/input/by-id/usb-Razer_Razer_DeathAdder_V2-event-mouse";
-const KEYBOARD: &str = "/dev/input/by-id/usb-Corsair_CORSAIR_K70_RGB_PRO_Mechanical_Gaming_Keyboard_5A26F8981EBE3651A45E0500D0491782-event-kbd";
 const MIN_DURATION: Duration = Duration::from_millis(1);
+
+#[derive(Serialize, Deserialize)]
+struct Devices {
+    mouse: PathBuf,
+    keyboard: PathBuf,
+}
 
 #[derive(Serialize, Deserialize)]
 struct Config {
@@ -24,32 +29,23 @@ struct Config {
     #[serde(default = "default_hotkey")]
     hotkey: KeyCode,
 
-    #[serde(default = "default_toggle")]
+    #[serde(default)]
     toggle: bool,
+
+    devices: Devices,
 }
 
 fn default_hotkey() -> KeyCode {
-    KeyCode::BTN_EXTRA // or whatever your default is
+    KeyCode::BTN_EXTRA
 }
 
 fn default_interval() -> Duration {
     Duration::from_millis(15)
 }
 
-fn default_toggle() -> bool {
-    false
-}
-
 fn config_path() -> std::path::PathBuf {
     std::path::PathBuf::from(std::env::var("HOME").unwrap())
         .join(".config/auto_clicker/config.toml")
-}
-
-fn save_config(config: &Config) {
-    let path = config_path();
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let contents = toml::to_string(config).unwrap();
-    std::fs::write(path, contents).unwrap();
 }
 
 #[derive(Debug)]
@@ -64,9 +60,7 @@ struct AppModel {
     durations: [Duration; 4],
     capturing: bool,
     is_clicking: bool,
-    duration: Duration,
-    toggle: bool,
-    hotkey: KeyCode,
+    config: Config,
     click_sender: mpsc::Sender<()>,
     cx: AppContext,
     dirty: bool,
@@ -101,8 +95,18 @@ impl AppModel {
     fn key_label(&self) -> String {
         match self.capturing {
             true => String::from("Press any key..."),
-            false => format!("{:?}", self.hotkey),
+            false => format!("{:?}", self.config.hotkey),
         }
+    }
+    fn save_config(&mut self) {
+        if !self.dirty {
+            return;
+        }
+        let path = config_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let contents = toml::to_string(&self.config).unwrap();
+        std::fs::write(path, contents).unwrap();
+        self.dirty = false;
     }
 }
 
@@ -179,7 +183,7 @@ impl SimpleComponent for AppModel {
                     set_spacing:12,
                     gtk::Label {
                         #[watch]
-                        set_markup: &format!("<b>Click Interval: {}</b>", format_duration(model.duration) ),
+                        set_markup: &format!("<b>Click Interval: {}</b>", format_duration(model.config.interval) ),
                         set_halign: gtk::Align::Start,
                     },
                     gtk::Box {
@@ -261,7 +265,7 @@ impl SimpleComponent for AppModel {
                             #[name = "toggle_btn"]
                             gtk::ToggleButton {
                                 set_label: "Hold",
-                                set_active: !model.toggle,
+                                set_active: !model.config.toggle,
                                 set_tooltip: "Hold hotkey to keep clicking",
                                 connect_toggled[sender] =>  move |_| {
                                     sender.input(AppMessages::Toggle(false));
@@ -271,7 +275,7 @@ impl SimpleComponent for AppModel {
                                 set_label: "Toggle",
                                 set_group: Some(&toggle_btn),
                                 set_tooltip: "Toggle on/off clicking with hotkey",
-                                set_active: model.toggle,
+                                set_active: model.config.toggle,
                                 connect_toggled[sender] =>  move |_| {
                                     sender.input(AppMessages::Toggle(true));
                                 }
@@ -308,8 +312,8 @@ impl SimpleComponent for AppModel {
         root: Self::Root,
         sender: relm4::ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let mouse = Device::open(MOUSE).unwrap();
-        let keyboard = Device::open(KEYBOARD).unwrap();
+        let mouse = Device::open(&config.devices.mouse).unwrap();
+        let keyboard = Device::open(&config.devices.keyboard).unwrap();
         let mut virtual_mouse = create_virtual_mouse();
         let (click_sender, click_reciever) = mpsc::channel::<()>();
         let mut durations = [Duration::default(); 4];
@@ -380,11 +384,9 @@ impl SimpleComponent for AppModel {
             durations,
             cx,
             click_sender,
+            config,
             capturing: false,
             is_clicking: false,
-            toggle: config.toggle,
-            hotkey: config.hotkey,
-            duration,
             dirty: false,
         };
 
@@ -402,16 +404,18 @@ impl SimpleComponent for AppModel {
             }
             AppMessages::Toggle(value) => {
                 self.cx.toggle.store(value, SeqCst);
-                self.toggle = value;
+                self.config.toggle = value;
                 println!("Toggle set to {}", value);
-                self.dirty = true
+                self.dirty = true;
+                self.save_config();
             }
 
             AppMessages::CaptureEnd(key) => {
                 println!("Captured {:?}", key);
                 self.capturing = false;
-                self.hotkey = key;
-                self.dirty = true
+                self.config.hotkey = key;
+                self.dirty = true;
+                self.save_config();
             }
 
             AppMessages::ClickingBegin => {
@@ -431,24 +435,12 @@ impl SimpleComponent for AppModel {
                 self.durations[app_duration as usize] = duration;
                 let duration = self.durations.iter().sum::<Duration>().max(MIN_DURATION);
                 self.cx.duration.store(duration.as_millis() as u64, SeqCst);
-                self.duration = duration;
+                self.config.interval = duration;
                 println!("Set duration to {}", format_duration(duration));
-                self.dirty = true
+                self.dirty = true;
+                self.save_config();
             }
         }
-    }
-
-    fn shutdown(&mut self, _: &mut Self::Widgets, _: Sender<Self::Output>) {
-        if !self.dirty {
-            return;
-        }
-
-        let config = Config {
-            interval: self.duration,
-            hotkey: KeyCode::new(self.cx.captured_input.load(SeqCst)),
-            toggle: self.toggle,
-        };
-        save_config(&config);
     }
 }
 
