@@ -3,7 +3,6 @@ use evdev::uinput::VirtualDevice;
 use evdev::*;
 use gtk::prelude::*;
 use humantime::format_duration;
-use humantime_serde;
 use relm4::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -134,7 +133,7 @@ fn device_input_handler(mut device_context: DeviceContext) {
                         if key.code() != cx.captured_input.load(SeqCst) {
                             continue;
                         }
-                        if cx.toggle.load(SeqCst) == true {
+                        if cx.toggle.load(SeqCst) {
                             // toggle is enabled so we flip
                             cx.keep_clicking.fetch_not(SeqCst);
                         } else {
@@ -147,7 +146,7 @@ fn device_input_handler(mut device_context: DeviceContext) {
                         if key.code() != cx.captured_input.load(SeqCst) {
                             continue;
                         }
-                        if cx.toggle.load(SeqCst) == true {
+                        if cx.toggle.load(SeqCst) {
                             // toggle is enabled so we dont turn off
                             continue;
                         }
