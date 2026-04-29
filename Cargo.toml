@@ -5,6 +5,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+anyhow = "1.0.102"
 evdev = {version = "0.13.2", features = ["serde"] }
 humantime = "2.3.0"
 humantime-serde = "1.1.1"
