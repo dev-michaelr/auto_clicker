@@ -42,21 +42,9 @@ cargo install --path .
 
 The binary will located at `~/.cargo/bin/auto_clicker`.
 
-### Run
-
-```bash
-auto_clicker
-```
-
-Make sure `~/.cargo/bin` is in your path, you can check your path with:
-
-```bash
-echo $PATH
-```
-
 ## Config
 
-Create a config file and fill in your own device paths. You can find them with:
+Before you execute it, create a config file and fill in your own device paths. You can find them with:
 
 ```bash
 ls /dev/input/by-id/
@@ -74,4 +62,16 @@ toggle = false
 [devices]
 mouse = "/dev/input/by-id/example-mouse"
 keyboard = "/dev/input/by-id/example-keyboard"
+```
+
+## Run
+
+Make sure `~/.cargo/bin` is in your path, you can check your path with:
+
+```bash
+echo $PATH
+```
+
+```bash
+auto_clicker
 ```
