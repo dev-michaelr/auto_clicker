@@ -21,6 +21,12 @@ Configure everything through a simple TOML config file. Set your click interval 
 ### Download
 [Latest release](https://github.com/dev-michaelr/auto_clicker/releases/latest)
 
+You need to make it executable after downloading through your file manager or command:
+
+```bash
+chmod +x auto_clicker
+```
+
 ### Dependencies
 - gtk4 (`libgtk-4-1` on Debian/Ubuntu, `gtk4` on Arch, etc.)
 
