@@ -6,6 +6,8 @@ Configure everything through a simple TOML config file. Set your click interval 
 
 > **Beta:** This is early software. Expect rough edges.
 
+<img width="1043" height="681" alt="Image" src="https://github.com/user-attachments/assets/41e1080e-793d-4ed9-bafb-64ce2518802c" />
+
 ## Features
 
 - X11 and Wayland compatible — no display server dependency
