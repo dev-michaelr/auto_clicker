@@ -473,6 +473,6 @@ fn main() {
     let path = config_path();
     let contents = std::fs::read_to_string(path).unwrap_or_default();
     let config: Config = toml::from_str(&contents).unwrap();
-    let app = RelmApp::new("io.github.rusty483.autoclicker");
+    let app = RelmApp::new("io.github.dev-michaelr.autoclicker");
     app.run::<AppModel>(config);
 }

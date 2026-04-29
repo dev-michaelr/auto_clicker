@@ -2,6 +2,7 @@
 name = "auto_clicker"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 evdev = {version = "0.13.2", features = ["serde"] }
