@@ -51,7 +51,7 @@ auto_clicker
 Make sure `~/.cargo/bin` is in your path, you can check your path with:
 
 ```bash
-    echo $PATH
+echo $PATH
 ```
 
 ## Config
