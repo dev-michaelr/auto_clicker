@@ -18,9 +18,8 @@ Configure everything through a simple TOML config file. Set your click interval 
 
 ## Installation
 
-### Prerequisites
-
-- Rust (install via https://rustup.rs)
+### Dependencies
+- gtk4 (`libgtk-4-1` on Debian/Ubuntu, `gtk4` on Arch, etc.)
 
 ### Setup
 
@@ -32,7 +31,11 @@ sudo usermod -aG input $USER
 
 Then log out and back in for the group change to take effect.
 
-### Build
+### Building from source
+
+#### Prerequisites
+- Have rust installed (https://rustup.rs/)
+- Have git installed (https://git-scm.com/)
 
 ```bash
 git clone https://github.com/dev-michaelr/auto_clicker.git
