@@ -42,7 +42,7 @@ cargo install --path .
 
 The binary will located at `~/.cargo/bin/auto_clicker`.
 
-Make sure `~/.cargo/bin` is in your path, you can check your path with:
+Make sure `~/.cargo/bin` is in your path. You can check your path with:
 
 ```bash
 echo $PATH
@@ -56,7 +56,7 @@ Before you run `auto_clicker`, create a config file located at `~/.config/auto_c
 ls /dev/input/by-id/
 ```
 
-You will want the one ending with event-mouse for mouse and event-kbd for keyboard.
+You will want devices ending with event-mouse for mouse and event-kbd for keyboard.
 
 Example:
 
