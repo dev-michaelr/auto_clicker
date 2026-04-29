@@ -1,8 +1,6 @@
 # About
 
-A lightweight autoclicker for Linux supporting both X11 and Wayland. Unlike traditional autoclickers that hook into a display server, it works at the **kernel input level** via `/dev/input` — meaning it works anywhere: games, Wayland compositors, fullscreen apps, and terminals alike.
-
-Configure everything through a simple TOML config file. Set your click interval down to millisecond precision, bind a mouse side button or any key as your toggle hotkey, and manually specify your input devices by their `/dev/input` ID.
+A lightweight autoclicker for Linux supporting both X11 and Wayland. Unlike traditional autoclickers that hook into a display server, it works at the **kernel input level** via `/dev/input` meaning it works anywhere: games, any compositors, fullscreen apps.
 
 > **Beta:** This is early software. Expect rough edges.
 
@@ -10,11 +8,12 @@ Configure everything through a simple TOML config file. Set your click interval 
 
 ## Features
 
-- X11 and Wayland compatible — no display server dependency
+- X11 and Wayland compatible
+- Blazingly fast low latency clicking
 - Millisecond-precision click intervals
 - Toggle or hold mode
 - Hotkey support for mouse buttons and keyboard keys
-- Minimal config — one TOML file, no GUI needed
+- Minimal config
 
 ## Installation
 
@@ -32,7 +31,7 @@ chmod +x auto_clicker
 
 ### Setup
 
-Reading from `/dev/input` requires your user to be in the `input` group:
+Read and write access to `/dev/input` requires your user to be in the `input` group:
 
 ```bash
 sudo usermod -aG input $USER
@@ -43,8 +42,8 @@ Then log out and back in for the group change to take effect.
 ### Building from source
 
 #### Prerequisites
-- Have rust installed (https://rustup.rs/)
-- Have git installed (https://git-scm.com/)
+- Have rust installed https://rustup.rs/
+- Have git installed https://git-scm.com/
 
 ```bash
 cargo install --git https://github.com/dev-michaelr/auto_clicker.git --tag v0.1.0
@@ -61,12 +60,11 @@ echo $PATH
 ## Config
 
 Before you run `auto_clicker`, create a config file located at `~/.config/auto_clicker/config.toml` and fill in your own device paths. You can find them with:
-
 ```bash
 ls /dev/input/by-id/
 ```
 
-You will want devices ending with event-mouse for mouse and event-kbd for keyboard.
+You will want devices ending with event-mouse for your mouse and event-kbd for your keyboard.
 
 Example:
 
@@ -76,6 +74,6 @@ hotkey = "BTN_EXTRA"
 toggle = false
 
 [devices]
-mouse = "/dev/input/by-id/example-mouse"
-keyboard = "/dev/input/by-id/example-keyboard"
+mouse = "/dev/input/by-id/example-event-mouse"
+keyboard = "/dev/input/by-id/example-event-kbd"
 ```
