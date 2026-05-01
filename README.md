@@ -46,7 +46,7 @@ Then log out and back in for the group change to take effect.
 - Have git installed https://git-scm.com/
 
 ```bash
-cargo install --git https://github.com/dev-michaelr/auto_clicker.git --tag v0.1.1
+cargo install --git https://github.com/dev-michaelr/auto_clicker.git --tag v0.1.2
 ```
 
 The binary will located at `~/.cargo/bin/auto_clicker`.

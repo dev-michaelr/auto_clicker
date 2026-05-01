@@ -5,7 +5,7 @@ use evdev::{AttributeSet, Device, EventSummary, EventType, InputEvent, KeyCode};
 use std::sync::atomic::Ordering::{Relaxed, SeqCst};
 use std::thread::spawn;
 
-pub fn device_input_handler(mut device: Device, cx: AppContext) {
+pub fn device_input_handler(mut device: Device, cx: &'static AppContext) {
     spawn(move || {
         loop {
             let device_events =

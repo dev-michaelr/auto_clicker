@@ -1,15 +1,17 @@
 mod input;
 pub mod save;
+
 use anyhow::Context;
 use evdev::{Device, KeyCode};
 use gtk::prelude::*;
 use humantime::format_duration;
 use input::*;
+
 use relm4::*;
 use save::{Config, MIN_DURATION};
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64};
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc;
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 
@@ -27,17 +29,16 @@ pub struct AppModel {
     is_clicking: bool,
     config: Config,
     click_sender: mpsc::Sender<()>,
-    cx: AppContext,
+    cx: &'static AppContext,
     dirty: bool,
 }
 
-#[derive(Clone)]
 pub struct AppContext {
-    toggle: Arc<AtomicBool>,
-    keep_clicking: Arc<AtomicBool>,
-    captured_input: Arc<AtomicU16>,
-    capturing: Arc<AtomicBool>,
-    duration: Arc<AtomicU64>,
+    toggle: AtomicBool,
+    keep_clicking: AtomicBool,
+    captured_input: AtomicU16,
+    capturing: AtomicBool,
+    duration: AtomicU64,
     sender: ComponentSender<AppModel>,
 }
 
@@ -220,9 +221,11 @@ impl SimpleComponent for AppModel {
     ) -> ComponentParts<Self> {
         let mouse =
             exit_on_err(Device::open(&config.devices.mouse).context("Failed to open mouse device"));
+
         let keyboard = exit_on_err(
             Device::open(&config.devices.keyboard).context("Failed to open keyboard device"),
         );
+
         let mut virtual_mouse = exit_on_err(create_virtual_mouse());
 
         let (click_sender, click_reciever) = mpsc::channel::<()>();
@@ -241,22 +244,20 @@ impl SimpleComponent for AppModel {
 
         let duration = durations.iter().sum::<Duration>().max(MIN_DURATION);
 
-        let cx = AppContext {
-            toggle: Arc::new(AtomicBool::new(config.toggle)),
-            keep_clicking: Arc::new(AtomicBool::new(false)),
-            captured_input: Arc::new(AtomicU16::new(config.hotkey.code())),
-            capturing: Arc::new(AtomicBool::new(false)),
+        let cx: &'static AppContext = Box::leak(Box::new(AppContext {
+            toggle: AtomicBool::new(config.toggle),
+            keep_clicking: AtomicBool::new(false),
+            captured_input: AtomicU16::new(config.hotkey.code()),
+            capturing: AtomicBool::new(false),
             sender: sender.clone(),
-            duration: Arc::new(AtomicU64::new(duration.as_millis() as u64)),
-        };
+            duration: AtomicU64::new(duration.as_millis() as u64),
+        }));
 
         // keyboard thread
-        device_input_handler(keyboard, cx.clone());
+        device_input_handler(keyboard, cx);
         // mouse thread
-        device_input_handler(mouse, cx.clone());
+        device_input_handler(mouse, cx);
 
-        let t_keep_clicking = cx.keep_clicking.clone();
-        let t_duration = cx.duration.clone();
         let t_sender = sender.clone();
 
         // clicking thread
@@ -264,12 +265,12 @@ impl SimpleComponent for AppModel {
             loop {
                 match click_reciever.recv() {
                     Ok(_) => {
-                        while t_keep_clicking.load(SeqCst) {
+                        while cx.keep_clicking.load(SeqCst) {
                             send_left_click(&mut virtual_mouse).unwrap_or_else(|e| {
                                 eprintln!("Error: {e:#}");
                                 std::process::exit(1);
                             });
-                            let milliseconds = t_duration.load(SeqCst);
+                            let milliseconds = cx.duration.load(SeqCst);
                             let duration: Duration =
                                 Duration::from_millis(milliseconds).max(MIN_DURATION);
                             sleep(duration);
