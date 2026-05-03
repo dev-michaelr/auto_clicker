@@ -99,7 +99,7 @@ impl SimpleComponent for AppModel {
                         gtk::Box {
                             set_spacing:6,
                             gtk::Label {
-                                set_label: "hours"
+                                set_label: "Hours"
                             },
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
                                 set_value: model.durations[AppDuration::Hours as usize].as_secs_f64() / 3600.0,
@@ -112,7 +112,7 @@ impl SimpleComponent for AppModel {
                         gtk::Box {
                             set_spacing:6,
                             gtk::Label {
-                                set_label: "mins"
+                                set_label: "Mins"
                             },
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
                                 set_value: model.durations[AppDuration::Minutes as usize].as_secs_f64() / 60.0,
@@ -125,7 +125,7 @@ impl SimpleComponent for AppModel {
                         gtk::Box {
                             set_spacing:6,
                             gtk::Label {
-                                set_label: "secs"
+                                set_label: "Secs"
                             },
                             gtk::SpinButton::with_range(0.0,10000.0,1.0) {
                                 set_value: model.durations[AppDuration::Seconds as usize].as_secs_f64(),
@@ -138,9 +138,9 @@ impl SimpleComponent for AppModel {
                         gtk::Box {
                             set_spacing:6,
                             gtk::Label {
-                                set_label: "millisecs"
+                                set_label: "Millisecs"
                             },
-                            gtk::SpinButton::with_range(1.0,10000.0,1.0) {
+                            gtk::SpinButton::with_range(0.0,10000.0,1.0) {
                                 set_value: model.durations[AppDuration::Milliseconds as usize].as_millis() as f64,
                                 connect_value_changed[sender] => move |spin| {
                                     sender.input(AppMessages::DurationChanged(AppDuration::Milliseconds,Duration::from_millis(spin.value() as u64 )));

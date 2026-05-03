@@ -4,7 +4,7 @@ A lightweight autoclicker for Linux supporting both X11 and Wayland. Unlike trad
 
 > **Beta:** This is early software. Expect rough edges.
 
-<img width="1043" height="681" alt="Image" src="https://github.com/user-attachments/assets/41e1080e-793d-4ed9-bafb-64ce2518802c" />
+<img width="1167" height="701" alt="Image" src="https://github.com/user-attachments/assets/f4a3d98d-d970-4e6d-a644-3d3fa3e7edbf" />
 
 ## Features
 
@@ -46,7 +46,7 @@ Then log out and back in for the group change to take effect.
 - Have git installed https://git-scm.com/
 
 ```bash
-cargo install --git https://github.com/dev-michaelr/auto_clicker.git --tag v0.1.2
+cargo install --git https://github.com/dev-michaelr/auto_clicker.git --tag v0.1.3
 ```
 
 The binary will located at `~/.cargo/bin/auto_clicker`.
